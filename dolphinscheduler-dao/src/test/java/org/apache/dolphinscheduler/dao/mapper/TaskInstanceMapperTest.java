@@ -276,6 +276,27 @@ public class TaskInstanceMapperTest {
     }
 
     /**
+     * test query by task instance id and code
+     */
+    @Test
+    public void testQueryByInstanceIdAndCode() {
+        // insert ProcessInstance
+        ProcessInstance processInstance = insertProcessInstance();
+
+        // insert taskInstance
+        TaskInstance task = insertTaskInstance(processInstance.getId());
+        task.setHost("111.111.11.11");
+        taskInstanceMapper.updateById(task);
+
+        TaskInstance taskInstance = taskInstanceMapper.queryByInstanceIdAndCode(
+            task.getProcessInstanceId(),
+            task.getTaskCode()
+        );
+        taskInstanceMapper.deleteById(task.getId());
+        Assert.assertNotEquals(taskInstance, null);
+    }
+
+    /**
      * test count task instance
      */
     @Test
@@ -291,7 +312,6 @@ public class TaskInstanceMapperTest {
         definition.setCreateTime(new Date());
         definition.setUpdateTime(new Date());
         processDefinitionMapper.insert(definition);
-        //task.setProcessDefinitionId(definition.getId());
         taskInstanceMapper.updateById(task);
 
         int countTask = taskInstanceMapper.countTask(
@@ -327,7 +347,6 @@ public class TaskInstanceMapperTest {
         definition.setCreateTime(new Date());
         definition.setUpdateTime(new Date());
         processDefinitionMapper.insert(definition);
-        //task.setProcessDefinitionId(definition.getId());
         taskInstanceMapper.updateById(task);
 
 

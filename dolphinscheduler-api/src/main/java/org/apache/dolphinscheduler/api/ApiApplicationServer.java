@@ -17,21 +17,39 @@
 
 package org.apache.dolphinscheduler.api;
 
-import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
+import static org.apache.dolphinscheduler.common.Constants.SPRING_DATASOURCE_DRIVER_CLASS_NAME;
+
+import org.apache.dolphinscheduler.common.utils.PropertyUtils;
+
+import javax.annotation.PostConstruct;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.web.servlet.ServletComponentScan;
 import org.springframework.boot.web.servlet.support.SpringBootServletInitializer;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
 
-@SpringBootApplication
+@EnableAutoConfiguration
 @ServletComponentScan
-@ComponentScan(value = "org.apache.dolphinscheduler",
-        excludeFilters = @ComponentScan.Filter(type = FilterType.REGEX, pattern = "org.apache.dolphinscheduler.server.*"))
+@ComponentScan(value = "org.apache.dolphinscheduler", excludeFilters = {
+    @ComponentScan.Filter(type = FilterType.REGEX, pattern = {
+        "org.apache.dolphinscheduler.server.*",
+        "org.apache.dolphinscheduler.alert.*"
+    })
+})
 public class ApiApplicationServer extends SpringBootServletInitializer {
 
     public static void main(String[] args) {
-        SpringApplication.run(ApiApplicationServer.class, args);
+        new SpringApplicationBuilder(ApiApplicationServer.class).profiles("api").run(args);
     }
 
+    @Value("${spring.datasource.driver-class-name}")
+    private String driverClassName;
+
+    @PostConstruct
+    public void run() {
+        PropertyUtils.setValue(SPRING_DATASOURCE_DRIVER_CLASS_NAME, driverClassName);
+    }
 }

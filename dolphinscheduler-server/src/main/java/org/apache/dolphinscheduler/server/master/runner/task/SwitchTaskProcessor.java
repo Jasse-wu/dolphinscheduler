@@ -32,8 +32,8 @@ import org.apache.dolphinscheduler.server.master.config.MasterConfig;
 import org.apache.dolphinscheduler.server.utils.LogUtils;
 import org.apache.dolphinscheduler.server.utils.SwitchTaskUtils;
 import org.apache.dolphinscheduler.service.bean.SpringApplicationContext;
-import org.apache.dolphinscheduler.service.process.ProcessService;
 
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
 
 import java.util.Date;
@@ -53,7 +53,6 @@ public class SwitchTaskProcessor extends BaseTaskProcessor {
     private ProcessInstance processInstance;
     TaskDefinition taskDefinition;
 
-    protected ProcessService processService = SpringApplicationContext.getBean(ProcessService.class);
     MasterConfig masterConfig = SpringApplicationContext.getBean(MasterConfig.class);
 
     /**
@@ -173,7 +172,13 @@ public class SwitchTaskProcessor extends BaseTaskProcessor {
         switchParameters.setResultConditionLocation(finalConditionLocation);
         taskInstance.setSwitchDependency(switchParameters);
 
-        logger.info("the switch task depend result : {}", conditionResult);
+        if (!isValidSwitchResult(switchResultVos.get(finalConditionLocation))) {
+            conditionResult = DependResult.FAILED;
+            logger.error("the switch task depend result is invalid, result:{}, switch branch:{}", conditionResult, finalConditionLocation);
+            return true;
+        }
+
+        logger.info("the switch task depend result:{}, switch branch:{}", conditionResult, finalConditionLocation);
         return true;
     }
 
@@ -212,10 +217,25 @@ public class SwitchTaskProcessor extends BaseTaskProcessor {
             if (!org.apache.commons.lang.math.NumberUtils.isNumber(value)) {
                 value = "\"" + value + "\"";
             }
-            logger.info("paramName：{}，paramValue{}", paramName, value);
+            logger.info("paramName:{}，paramValue:{}", paramName, value);
             content = content.replace("${" + paramName + "}", value);
         }
         return content;
+    }
+
+    /**
+     * check whether switch result is valid
+     */
+    private boolean isValidSwitchResult(SwitchResultVo switchResult) {
+        if (CollectionUtils.isEmpty(switchResult.getNextNode())) {
+            return false;
+        }
+        for (String nextNode : switchResult.getNextNode()) {
+            if (StringUtils.isEmpty(nextNode)) {
+                return false;
+            }
+        }
+        return true;
     }
 
 }

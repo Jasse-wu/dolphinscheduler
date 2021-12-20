@@ -18,6 +18,16 @@
 import _ from 'lodash'
 import io from '@/module/io'
 
+// Avoid passing in illegal values when users directly call third-party interfaces
+const convertLocations = (locationStr) => {
+  let locations = null
+  if (!locationStr) return locations
+  try {
+    locations = JSON.parse(locationStr)
+  } catch (error) {}
+  return Array.isArray(locations) ? locations : null
+}
+
 export default {
   /**
    *  Task status acquisition
@@ -133,12 +143,14 @@ export default {
         state.version = res.data.processDefinition.version
         // name
         state.name = res.data.processDefinition.name
+        // releaseState
+        state.releaseState = res.data.processDefinition.releaseState
         // description
         state.description = res.data.processDefinition.description
         // taskRelationJson
         state.connects = res.data.processTaskRelationList
         // locations
-        state.locations = JSON.parse(res.data.processDefinition.locations)
+        state.locations = convertLocations(res.data.processDefinition.locations)
         // global params
         state.globalParams = res.data.processDefinition.globalParamList
         // timeout
@@ -164,6 +176,7 @@ export default {
           'timeout',
           'environmentCode'
         ]))
+
         resolve(res.data)
       }).catch(res => {
         reject(res)
@@ -235,7 +248,7 @@ export default {
         // connects
         state.connects = processTaskRelationList
         // locations
-        state.locations = JSON.parse(processDefinition.locations)
+        state.locations = convertLocations(processDefinition.locations)
         // global params
         state.globalParams = processDefinition.globalParamList
         // timeout
@@ -318,19 +331,16 @@ export default {
   /**
    * Process instance update
    */
-  updateInstance ({ state }, payload) {
+  updateInstance ({ state }, instanceId) {
     return new Promise((resolve, reject) => {
-      const data = {
-        globalParams: state.globalParams,
-        tasks: state.tasks,
-        tenantId: state.tenantId,
-        timeout: state.timeout
-      }
-      io.put(`projects/${state.projectCode}/process-instances/${payload}`, {
-        processInstanceJson: JSON.stringify(data),
+      io.put(`projects/${state.projectCode}/process-instances/${instanceId}`, {
+        syncDefine: state.syncDefine,
+        globalParams: JSON.stringify(state.globalParams),
         locations: JSON.stringify(state.locations),
-        connects: JSON.stringify(state.connects),
-        syncDefine: state.syncDefine
+        taskDefinitionJson: JSON.stringify(state.tasks),
+        taskRelationJson: JSON.stringify(state.connects),
+        tenantCode: state.tenantCode,
+        timeout: state.timeout
       }, res => {
         resolve(res)
         state.isEditDag = false
@@ -348,7 +358,7 @@ export default {
         resolve()
         return
       }
-      io.get(`projects/${state.projectCode}/process-definition/list`, payload, res => {
+      io.get(`projects/${state.projectCode}/process-definition/simple-list`, payload, res => {
         state.processListS = res.data
         resolve(res.data)
       }).catch(res => {
@@ -433,16 +443,12 @@ export default {
   /**
    * get jar
    */
-  getResourcesListJar ({ state }) {
+  getResourcesListJar ({ state }, programType) {
     return new Promise((resolve, reject) => {
-      if (state.resourcesListJar.length) {
-        resolve()
-        return
-      }
       io.get('resources/query-by-type', {
-        type: 'FILE'
+        type: 'FILE',
+        programType
       }, res => {
-        state.resourcesListJar = res.data
         resolve(res.data)
       }).catch(res => {
         reject(res)
@@ -690,7 +696,7 @@ export default {
    */
   getViewvariables ({ state }, payload) {
     return new Promise((resolve, reject) => {
-      io.get(`projects/${state.projectCode}/process-instances/${payload.code}/view-variables`, payload, res => {
+      io.get(`projects/${state.projectCode}/process-instances/${payload.processInstanceId}/view-variables`, res => {
         resolve(res)
       }).catch(e => {
         reject(e)
@@ -726,7 +732,7 @@ export default {
    */
   forceTaskSuccess ({ state }, payload) {
     return new Promise((resolve, reject) => {
-      io.post(`projects/${state.projectCode}/task-instances/${payload.code}/force-success`, payload, res => {
+      io.post(`projects/${state.projectCode}/task-instances/${payload.taskInstanceId}/force-success`, payload, res => {
         resolve(res)
       }).catch(e => {
         reject(e)

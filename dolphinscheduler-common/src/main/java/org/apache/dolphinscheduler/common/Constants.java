@@ -18,9 +18,9 @@
 package org.apache.dolphinscheduler.common;
 
 import org.apache.dolphinscheduler.common.enums.ExecutionStatus;
-import org.apache.dolphinscheduler.common.utils.OSUtils;
 
 import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang.SystemUtils;
 
 import java.util.regex.Pattern;
 
@@ -90,8 +90,6 @@ public final class Constants {
     public static final String REGISTRY_DOLPHINSCHEDULER_LOCK_FAILOVER_MASTERS = "/lock/failover/masters";
     public static final String REGISTRY_DOLPHINSCHEDULER_LOCK_FAILOVER_WORKERS = "/lock/failover/workers";
     public static final String REGISTRY_DOLPHINSCHEDULER_LOCK_FAILOVER_STARTUP_MASTERS = "/lock/failover/startup-masters";
-    public static final String REGISTRY_PLUGIN_BINDING = "registry.plugin.binding";
-    public static final String REGISTRY_PLUGIN_DIR = "registry.plugin.dir";
     public static final String REGISTRY_SERVERS = "registry.servers";
 
     /**
@@ -404,7 +402,6 @@ public final class Constants {
     /**
      * datasource configuration path
      */
-    public static final String DATASOURCE_PROPERTIES = "/datasource.properties";
 
     public static final String COMMON_TASK_TYPE = "common";
 
@@ -431,9 +428,11 @@ public final class Constants {
 
     public static final String CMD_PARAM_SUB_PROCESS_PARENT_INSTANCE_ID = "parentProcessInstanceId";
 
-    public static final String CMD_PARAM_SUB_PROCESS_DEFINE_ID = "processDefinitionId";
+    public static final String CMD_PARAM_SUB_PROCESS_DEFINE_CODE = "processDefinitionCode";
 
     public static final String CMD_PARAM_START_NODE_NAMES = "StartNodeNameList";
+
+    public static final String CMD_PARAM_START_NODES = "StartNodeList";
 
     public static final String CMD_PARAM_START_PARAMS = "StartParams";
 
@@ -449,10 +448,10 @@ public final class Constants {
      */
     public static final String CMDPARAM_COMPLEMENT_DATA_END_DATE = "complementEndDate";
 
-
     /**
-     * data source config
+     * complement date default cron string
      */
+    public static final String DEFAULT_CRON_STRING = "0 0 0 * * ? *";
 
     public static final String SPRING_DATASOURCE_DRIVER_CLASS_NAME = "spring.datasource.driver-class-name";
 
@@ -462,39 +461,37 @@ public final class Constants {
 
     public static final String SPRING_DATASOURCE_PASSWORD = "spring.datasource.password";
 
-    public static final String SPRING_DATASOURCE_VALIDATION_QUERY_TIMEOUT = "spring.datasource.validationQueryTimeout";
-
-    public static final String SPRING_DATASOURCE_INITIAL_SIZE = "spring.datasource.initialSize";
+    public static final String SPRING_DATASOURCE_CONNECTION_TIMEOUT = "spring.datasource.connectionTimeout";
 
     public static final String SPRING_DATASOURCE_MIN_IDLE = "spring.datasource.minIdle";
 
     public static final String SPRING_DATASOURCE_MAX_ACTIVE = "spring.datasource.maxActive";
 
-    public static final String SPRING_DATASOURCE_MAX_WAIT = "spring.datasource.maxWait";
+    public static final String SPRING_DATASOURCE_IDLE_TIMEOUT = "spring.datasource.idleTimeout";
 
-    public static final String SPRING_DATASOURCE_TIME_BETWEEN_EVICTION_RUNS_MILLIS = "spring.datasource.timeBetweenEvictionRunsMillis";
+    public static final String SPRING_DATASOURCE_MAX_LIFE_TIME = "spring.datasource.maxLifetime";
 
-    public static final String SPRING_DATASOURCE_TIME_BETWEEN_CONNECT_ERROR_MILLIS = "spring.datasource.timeBetweenConnectErrorMillis";
-
-    public static final String SPRING_DATASOURCE_MIN_EVICTABLE_IDLE_TIME_MILLIS = "spring.datasource.minEvictableIdleTimeMillis";
+    public static final String SPRING_DATASOURCE_VALIDATION_TIMEOUT = "spring.datasource.validationTimeout";
 
     public static final String SPRING_DATASOURCE_VALIDATION_QUERY = "spring.datasource.validationQuery";
 
-    public static final String SPRING_DATASOURCE_TEST_WHILE_IDLE = "spring.datasource.testWhileIdle";
+    public static final String SPRING_DATASOURCE_LEAK_DETECTION_THRESHOLD = "spring.datasource.leakDetectionThreshold";
 
-    public static final String SPRING_DATASOURCE_TEST_ON_BORROW = "spring.datasource.testOnBorrow";
+    public static final String SPRING_DATASOURCE_INITIALIZATION_FAIL_TIMEOUT = "spring.datasource.initializationFailTimeout";
 
-    public static final String SPRING_DATASOURCE_TEST_ON_RETURN = "spring.datasource.testOnReturn";
+    public static final String SPRING_DATASOURCE_IS_AUTOCOMMIT = "spring.datasource.isAutoCommit";
 
-    public static final String SPRING_DATASOURCE_POOL_PREPARED_STATEMENTS = "spring.datasource.poolPreparedStatements";
+    public static final String SPRING_DATASOURCE_CACHE_PREP_STMTS = "spring.datasource.cachePrepStmts";
 
-    public static final String SPRING_DATASOURCE_DEFAULT_AUTO_COMMIT = "spring.datasource.defaultAutoCommit";
+    public static final String SPRING_DATASOURCE_PREP_STMT_CACHE_SIZE = "spring.datasource.prepStmtCacheSize";
 
-    public static final String SPRING_DATASOURCE_KEEP_ALIVE = "spring.datasource.keepAlive";
+    public static final String SPRING_DATASOURCE_PREP_STMT_CACHE_SQL_LIMIT = "spring.datasource.prepStmtCacheSqlLimit";
 
-    public static final String SPRING_DATASOURCE_MAX_POOL_PREPARED_STATEMENT_PER_CONNECTION_SIZE = "spring.datasource.maxPoolPreparedStatementPerConnectionSize";
+    public static final String CACHE_PREP_STMTS = "cachePrepStmts";
 
-    public static final String DEVELOPMENT = "development";
+    public static final String PREP_STMT_CACHE_SIZE = "prepStmtCacheSize";
+
+    public static final String PREP_STMT_CACHE_SQL_LIMIT = "prepStmtCacheSqlLimit";
 
     public static final String QUARTZ_PROPERTIES_PATH = "quartz.properties";
 
@@ -504,6 +501,11 @@ public final class Constants {
     public static final int SLEEP_TIME_MILLIS = 1000;
 
     /**
+     * one second mils
+     */
+    public static final int SECOND_TIME_MILLIS = 1000;
+
+    /**
      * master task instance cache-database refresh interval
      */
     public static final int CACHE_REFRESH_TIME_MILLIS = 20 * 1000;
@@ -511,8 +513,7 @@ public final class Constants {
     /**
      * heartbeat for zk info length
      */
-    public static final int HEARTBEAT_FOR_ZOOKEEPER_INFO_LENGTH = 10;
-    public static final int HEARTBEAT_WITH_WEIGHT_FOR_ZOOKEEPER_INFO_LENGTH = 11;
+    public static final int HEARTBEAT_FOR_ZOOKEEPER_INFO_LENGTH = 13;
 
     /**
      * jar
@@ -658,6 +659,10 @@ public final class Constants {
      */
     public static final String SUCCEEDED = "SUCCEEDED";
     /**
+     * ENDED
+     */
+    public static final String ENDED = "ENDED";
+    /**
      * NEW
      */
     public static final String NEW = "NEW";
@@ -709,7 +714,7 @@ public final class Constants {
      * application regex
      */
     public static final String APPLICATION_REGEX = "application_\\d+_\\d+";
-    public static final String PID = OSUtils.isWindows() ? "handle" : "pid";
+    public static final String PID = SystemUtils.IS_OS_WINDOWS ? "handle" : "pid";
     /**
      * month_begin
      */
@@ -741,7 +746,7 @@ public final class Constants {
     public static final char LEFT_BRACE_CHAR = '(';
     public static final char RIGHT_BRACE_CHAR = ')';
     public static final String ADD_STRING = "+";
-    public static final String MULTIPLY_STRING = "*";
+    public static final String STAR = "*";
     public static final String DIVISION_STRING = "/";
     public static final String LEFT_BRACE_STRING = "(";
     public static final char P = 'P';
@@ -759,6 +764,7 @@ public final class Constants {
     public static final String DEPENDENCE = "dependence";
     public static final String TASK_TYPE = "taskType";
     public static final String TASK_LIST = "taskList";
+    public static final String WARNING_GROUP_NAME="warningGroupName";
     public static final String RWXR_XR_X = "rwxr-xr-x";
     public static final String QUEUE = "queue";
     public static final String QUEUE_NAME = "queueName";
@@ -776,6 +782,8 @@ public final class Constants {
     public static final String CONTENT = "content";
     public static final String DEPENDENT_SPLIT = ":||";
     public static final String DEPENDENT_ALL = "ALL";
+    public static final long DEPENDENT_ALL_TASK_CODE = 0;
+
 
 
     /**
@@ -937,6 +945,19 @@ public final class Constants {
     public static final String COM_DB2_JDBC_DRIVER = "com.ibm.db2.jcc.DB2Driver";
     public static final String COM_PRESTO_JDBC_DRIVER = "com.facebook.presto.jdbc.PrestoDriver";
 
+
+    /**
+     * validation Query
+     */
+    public static final String POSTGRESQL_VALIDATION_QUERY = "select version()";
+    public static final String MYSQL_VALIDATION_QUERY = "select 1";
+    public static final String HIVE_VALIDATION_QUERY = "select 1";
+    public static final String CLICKHOUSE_VALIDATION_QUERY = "select 1";
+    public static final String ORACLE_VALIDATION_QUERY = "select 1 from dual";
+    public static final String SQLSERVER_VALIDATION_QUERY = "select 1";
+    public static final String DB2_VALIDATION_QUERY = "select 1 from sysibm.sysdummy1";
+    public static final String PRESTO_VALIDATION_QUERY = "select 1";
+
     /**
      * database type
      */
@@ -1011,14 +1032,9 @@ public final class Constants {
      */
     public static final int AUTHORIZE_READABLE_PERM = 4;
 
-
-    /**
-     * plugin configurations
-     */
-    public static final String PLUGIN_JAR_SUFFIX = ".jar";
-
     public static final int NORMAL_NODE_STATUS = 0;
     public static final int ABNORMAL_NODE_STATUS = 1;
+    public static final int BUSY_NODE_STATUE = 2;
 
     public static final String START_TIME = "start time";
     public static final String END_TIME = "end time";
@@ -1028,9 +1044,6 @@ public final class Constants {
      * system line separator
      */
     public static final String SYSTEM_LINE_SEPARATOR = System.getProperty("line.separator");
-
-
-    public static final String EXCEL_SUFFIX_XLS = ".xls";
 
     /**
      * datasource encryption salt
@@ -1068,19 +1081,12 @@ public final class Constants {
      * docker & kubernetes
      */
     public static final boolean DOCKER_MODE = !StringUtils.isEmpty(System.getenv("DOCKER"));
-    public static final boolean KUBERNETES_MODE = !StringUtils.isEmpty(System.getenv("KUBERNETES_SERVICE_HOST")) && !StringUtils.isEmpty(System.getenv("KUBERNETES_SERVICE_PORT"));
+    public static final Boolean KUBERNETES_MODE = !StringUtils.isEmpty(System.getenv("KUBERNETES_SERVICE_HOST")) && !StringUtils.isEmpty(System.getenv("KUBERNETES_SERVICE_PORT"));
 
     /**
-     * task parameter keys
+     * dry run flag
      */
-    public static final String TASK_PARAMS = "params";
-    public static final String TASK_PARAMS_DATASOURCE = "datasource";
-    public static final String TASK_PARAMS_DATASOURCE_NAME = "datasourceName";
-    public static final String TASK_DEPENDENCE = "dependence";
-    public static final String TASK_DEPENDENCE_DEPEND_TASK_LIST = "dependTaskList";
-    public static final String TASK_DEPENDENCE_DEPEND_ITEM_LIST = "dependItemList";
-    public static final String TASK_DEPENDENCE_PROJECT_ID = "projectId";
-    public static final String TASK_DEPENDENCE_PROJECT_NAME = "projectName";
-    public static final String TASK_DEPENDENCE_DEFINITION_ID = "definitionId";
-    public static final String TASK_DEPENDENCE_DEFINITION_NAME = "definitionName";
+    public static final int DRY_RUN_FLAG_NO = 0;
+    public static final int DRY_RUN_FLAG_YES = 1;
+
 }

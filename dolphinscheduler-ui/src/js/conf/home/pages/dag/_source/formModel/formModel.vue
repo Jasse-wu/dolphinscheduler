@@ -193,7 +193,7 @@
               <el-option
                 v-for="item in postTasks"
                 :key="item.code"
-                :value="item.name"
+                :value="item.code"
                 :label="item.name"
               ></el-option>
             </el-select>
@@ -230,7 +230,7 @@
               <el-option
                 v-for="item in postTasks"
                 :key="item.code"
-                :value="item.name"
+                :value="item.code"
                 :label="item.name"
               ></el-option>
             </el-select>
@@ -264,15 +264,6 @@
             :backfill-item="backfillItem"
           >
           </m-shell>
-          <!-- waterdrop node -->
-          <m-waterdrop
-            v-if="nodeData.taskType === 'WATERDROP'"
-            @on-params="_onParams"
-            @on-cache-params="_onCacheParams"
-            ref="WATERDROP"
-            :backfill-item="backfillItem"
-          >
-          </m-waterdrop>
           <!-- sub_process node -->
           <m-sub-process
             v-if="nodeData.taskType === 'SUB_PROCESS'"
@@ -362,6 +353,13 @@
             :backfill-item="backfillItem"
           >
           </m-datax>
+        <m-pigeon
+          v-if="nodeData.taskType === 'PIGEON'"
+          @on-params="_onParams"
+          @on-cache-params="_onCacheParams"
+          :backfill-item="backfillItem"
+          ref="PIGEON">
+        </m-pigeon>
           <m-sqoop
             v-if="nodeData.taskType === 'SQOOP'"
             @on-params="_onParams"
@@ -385,12 +383,21 @@
             @on-switch-result="_onSwitchResult"
             :backfill-item="backfillItem"
             :nodeData="nodeData"
+            :postTasks="postTasks"
           ></m-switch>
+          <!-- waterdrop node -->
+          <m-waterdrop
+            v-if="nodeData.taskType === 'WATERDROP'"
+            @on-params="_onParams"
+            @on-cache-params="_onCacheParams"
+            ref="WATERDROP"
+            :backfill-item="backfillItem"
+          >
+          </m-waterdrop>
         </div>
         <!-- Pre-tasks in workflow -->
         <m-pre-tasks
           ref="preTasks"
-          v-if="['SHELL', 'SUB_PROCESS'].indexOf(nodeData.taskType) > -1"
           :code="code"
         />
       </div>
@@ -430,6 +437,7 @@
   import mDependent from './tasks/dependent'
   import mHttp from './tasks/http'
   import mDatax from './tasks/datax'
+  import mPigeon from './tasks/pigeon'
   import mConditions from './tasks/conditions'
   import mSwitch from './tasks/switch.vue'
   import mSqoop from './tasks/sqoop'
@@ -509,7 +517,7 @@
             label: `${i18n.$t('Failed')}`
           }
         ],
-        // for CONDITIONS
+        // for CONDITIONS and SWITCH
         postTasks: [],
         prevTasks: [],
         // refresh part of the formModel, after set backfillItem outside
@@ -542,6 +550,7 @@
         return {
           code: task.code,
           conditionResult: task.taskParams.conditionResult,
+          switchResult: task.taskParams.switchResult,
           delayTime: task.delayTime,
           dependence: task.taskParams.dependence,
           desc: task.description,
@@ -551,7 +560,8 @@
           params: _.omit(task.taskParams, [
             'conditionResult',
             'dependence',
-            'waitStartTimeout'
+            'waitStartTimeout',
+            'switchResult'
           ]),
           retryInterval: task.failRetryInterval,
           runFlag: task.flag,
@@ -648,10 +658,10 @@
           const processDefinitionId =
             this.backfillItem.params.processDefinitionId
           const process = this.processListS.find(
-            (process) => process.processDefinition.id === processDefinitionId
+            (def) => def.id === processDefinitionId
           )
           this.$emit('onSubProcess', {
-            subProcessCode: process.processDefinition.code,
+            subProcessCode: process.code,
             fromThis: this
           })
         }
@@ -683,8 +693,7 @@
           return false
         }
         if (
-          this.successBranch !== '' &&
-          this.successBranch !== null &&
+          this.successBranch &&
           this.successBranch === this.failedBranch
         ) {
           this.$message.warning(
@@ -696,13 +705,6 @@
         }
         if (this.name === this.backfillItem.name) {
           return true
-        }
-        // Name repeat depends on dom backfill dependent store
-        const tasks = this.store.state.dag.tasks
-        const task = tasks.find((t) => t.name === this.name)
-        if (task) {
-          this.$message.warning(`${i18n.$t('Name already exists')}`)
-          return false
         }
         return true
       },
@@ -750,8 +752,8 @@
         if (this.$refs.preTasks) {
           this.$refs.preTasks.setPreNodes()
         }
-        this.conditionResult.successNode[0] = this.successBranch
-        this.conditionResult.failedNode[0] = this.failedBranch
+        this.successBranch && (this.conditionResult.successNode[0] = this.successBranch)
+        this.failedBranch && (this.conditionResult.failedNode[0] = this.failedBranch)
         this.$emit('addTaskInfo', {
           item: {
             code: this.nodeData.id,
@@ -762,7 +764,8 @@
               ...this.params,
               dependence: this.cacheDependence,
               conditionResult: this.conditionResult,
-              waitStartTimeout: this.waitStartTimeout
+              waitStartTimeout: this.waitStartTimeout,
+              switchResult: this.switchResult
             },
             flag: this.runFlag,
             taskPriority: this.taskInstancePriority,
@@ -860,6 +863,9 @@
             this.successBranch = o.conditionResult.successNode[0]
             this.failedBranch = o.conditionResult.failedNode[0]
           }
+          if (o.switchResult) {
+            this.switchResult = o.switchResult
+          }
           // If the workergroup has been deleted, set the default workergroup
           for (
             let i = 0;
@@ -942,7 +948,7 @@
        * Child workflow entry show/hide
        */
       _isGoSubProcess () {
-        return this.nodeData.taskType === 'SUB_PROCESS' && this.name
+        return this.nodeData.taskType === 'SUB_PROCESS' && this.name && this.processListS && this.processListS.length > 0
       },
       taskInstance () {
         if (this.taskInstances.length > 0) {
@@ -968,6 +974,7 @@
       mDependent,
       mHttp,
       mDatax,
+      mPigeon,
       mSqoop,
       mConditions,
       mSwitch,

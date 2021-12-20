@@ -17,38 +17,21 @@
 
 package org.apache.dolphinscheduler.api.service.impl;
 
-import static org.apache.dolphinscheduler.common.Constants.CMDPARAM_COMPLEMENT_DATA_END_DATE;
-import static org.apache.dolphinscheduler.common.Constants.CMDPARAM_COMPLEMENT_DATA_START_DATE;
-import static org.apache.dolphinscheduler.common.Constants.CMD_PARAM_RECOVER_PROCESS_ID_STRING;
-import static org.apache.dolphinscheduler.common.Constants.CMD_PARAM_START_NODE_NAMES;
-import static org.apache.dolphinscheduler.common.Constants.CMD_PARAM_START_PARAMS;
-import static org.apache.dolphinscheduler.common.Constants.MAX_TASK_TIMEOUT;
-
+import com.fasterxml.jackson.core.type.TypeReference;
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections.MapUtils;
+import org.apache.commons.lang.StringUtils;
 import org.apache.dolphinscheduler.api.enums.ExecuteType;
 import org.apache.dolphinscheduler.api.enums.Status;
 import org.apache.dolphinscheduler.api.service.ExecutorService;
 import org.apache.dolphinscheduler.api.service.MonitorService;
 import org.apache.dolphinscheduler.api.service.ProjectService;
 import org.apache.dolphinscheduler.common.Constants;
-import org.apache.dolphinscheduler.common.enums.CommandType;
-import org.apache.dolphinscheduler.common.enums.ExecutionStatus;
-import org.apache.dolphinscheduler.common.enums.FailureStrategy;
-import org.apache.dolphinscheduler.common.enums.Priority;
-import org.apache.dolphinscheduler.common.enums.ReleaseState;
-import org.apache.dolphinscheduler.common.enums.RunMode;
-import org.apache.dolphinscheduler.common.enums.TaskDependType;
-import org.apache.dolphinscheduler.common.enums.WarningType;
+import org.apache.dolphinscheduler.common.enums.*;
 import org.apache.dolphinscheduler.common.model.Server;
-import org.apache.dolphinscheduler.common.utils.CollectionUtils;
 import org.apache.dolphinscheduler.common.utils.DateUtils;
 import org.apache.dolphinscheduler.common.utils.JSONUtils;
-import org.apache.dolphinscheduler.dao.entity.Command;
-import org.apache.dolphinscheduler.dao.entity.ProcessDefinition;
-import org.apache.dolphinscheduler.dao.entity.ProcessInstance;
-import org.apache.dolphinscheduler.dao.entity.Project;
-import org.apache.dolphinscheduler.dao.entity.Schedule;
-import org.apache.dolphinscheduler.dao.entity.Tenant;
-import org.apache.dolphinscheduler.dao.entity.User;
+import org.apache.dolphinscheduler.dao.entity.*;
 import org.apache.dolphinscheduler.dao.mapper.ProcessDefinitionMapper;
 import org.apache.dolphinscheduler.dao.mapper.ProcessInstanceMapper;
 import org.apache.dolphinscheduler.dao.mapper.ProjectMapper;
@@ -56,21 +39,14 @@ import org.apache.dolphinscheduler.remote.command.StateEventChangeCommand;
 import org.apache.dolphinscheduler.remote.processor.StateEventCallbackService;
 import org.apache.dolphinscheduler.service.process.ProcessService;
 import org.apache.dolphinscheduler.service.quartz.cron.CronUtils;
-
-import org.apache.commons.collections.MapUtils;
-import org.apache.commons.lang.StringUtils;
-
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+
+import java.util.*;
+
+import static org.apache.dolphinscheduler.common.Constants.*;
 
 /**
  * executor service impl
@@ -132,7 +108,8 @@ public class ExecutorServiceImpl extends BaseServiceImpl implements ExecutorServ
                                                    TaskDependType taskDependType, WarningType warningType, int warningGroupId,
                                                    RunMode runMode,
                                                    Priority processInstancePriority, String workerGroup, Long environmentCode,Integer timeout,
-                                                   Map<String, String> startParams, Integer expectedParallelismNumber) {
+                                                   Map<String, String> startParams, Integer expectedParallelismNumber,
+                                                   int dryRun) {
         Project project = projectMapper.queryByCode(projectCode);
         //check user access for project
         Map<String, Object> result = projectService.checkProjectAndAuth(loginUser, project, projectCode);
@@ -169,7 +146,7 @@ public class ExecutorServiceImpl extends BaseServiceImpl implements ExecutorServ
          */
         int create = this.createCommand(commandType, processDefinition.getCode(),
                 taskDependType, failureStrategy, startNodeList, cronTime, warningType, loginUser.getId(),
-                warningGroupId, runMode, processInstancePriority, workerGroup, environmentCode, startParams, expectedParallelismNumber);
+                warningGroupId, runMode, processInstancePriority, workerGroup, environmentCode, startParams, expectedParallelismNumber, dryRun);
 
         if (create > 0) {
             processDefinition.setWarningGroupId(warningGroupId);
@@ -270,7 +247,7 @@ public class ExecutorServiceImpl extends BaseServiceImpl implements ExecutorServ
         }
 
         //get the startParams user specified at the first starting while repeat running is needed
-        Map<String, Object> commandMap = JSONUtils.toMap(processInstance.getCommandParam(), String.class, Object.class);
+        Map<String, Object> commandMap = JSONUtils.parseObject(processInstance.getCommandParam(), new TypeReference<Map<String, Object>>() {});
         String startParams = null;
         if (MapUtils.isNotEmpty(commandMap) && executeType == ExecuteType.REPEAT_RUNNING) {
             Object startParamsJson = commandMap.get(Constants.CMD_PARAM_START_PARAMS);
@@ -281,13 +258,13 @@ public class ExecutorServiceImpl extends BaseServiceImpl implements ExecutorServ
 
         switch (executeType) {
             case REPEAT_RUNNING:
-                result = insertCommand(loginUser, processInstanceId, processDefinition.getCode(), CommandType.REPEAT_RUNNING, startParams);
+                result = insertCommand(loginUser, processInstanceId, processDefinition.getCode(), processDefinition.getVersion(), CommandType.REPEAT_RUNNING, startParams);
                 break;
             case RECOVER_SUSPENDED_PROCESS:
-                result = insertCommand(loginUser, processInstanceId, processDefinition.getCode(), CommandType.RECOVER_SUSPENDED_PROCESS, startParams);
+                result = insertCommand(loginUser, processInstanceId, processDefinition.getCode(), processDefinition.getVersion(), CommandType.RECOVER_SUSPENDED_PROCESS, startParams);
                 break;
             case START_FAILURE_TASK_PROCESS:
-                result = insertCommand(loginUser, processInstanceId, processDefinition.getCode(), CommandType.START_FAILURE_TASK_PROCESS, startParams);
+                result = insertCommand(loginUser, processInstanceId, processDefinition.getCode(), processDefinition.getVersion(), CommandType.START_FAILURE_TASK_PROCESS, startParams);
                 break;
             case STOP:
                 if (processInstance.getState() == ExecutionStatus.READY_STOP) {
@@ -407,10 +384,11 @@ public class ExecutorServiceImpl extends BaseServiceImpl implements ExecutorServ
      * @param loginUser           login user
      * @param instanceId          instance id
      * @param processDefinitionCode process definition code
+     * @param processVersion
      * @param commandType         command type
      * @return insert result code
      */
-    private Map<String, Object> insertCommand(User loginUser, Integer instanceId, long processDefinitionCode, CommandType commandType, String startParams) {
+    private Map<String, Object> insertCommand(User loginUser, Integer instanceId, long processDefinitionCode, int processVersion, CommandType commandType, String startParams) {
         Map<String, Object> result = new HashMap<>();
 
         //To add startParams only when repeat running is needed
@@ -425,6 +403,8 @@ public class ExecutorServiceImpl extends BaseServiceImpl implements ExecutorServ
         command.setProcessDefinitionCode(processDefinitionCode);
         command.setCommandParam(JSONUtils.toJsonString(cmdParam));
         command.setExecutorId(loginUser.getId());
+        command.setProcessDefinitionVersion(processVersion);
+        command.setProcessInstanceId(instanceId);
 
         if (!processService.verifyIsNeedCreateCommand(command)) {
             putMsg(result, Status.PROCESS_INSTANCE_EXECUTING_COMMAND, processDefinitionCode);
@@ -460,11 +440,10 @@ public class ExecutorServiceImpl extends BaseServiceImpl implements ExecutorServ
             return result;
         }
 
-        List<Integer> ids = new ArrayList<>();
-        processService.recurseFindSubProcessId(processDefinition.getId(), ids);
-        Integer[] idArray = ids.toArray(new Integer[ids.size()]);
-        if (!ids.isEmpty()) {
-            List<ProcessDefinition> processDefinitionList = processDefinitionMapper.queryDefinitionListByIdList(idArray);
+        List<Long> codes = new ArrayList<>();
+        processService.recurseFindSubProcess(processDefinition.getCode(), codes);
+        if (!codes.isEmpty()) {
+            List<ProcessDefinition> processDefinitionList = processDefinitionMapper.queryByCodes(codes);
             if (processDefinitionList != null) {
                 for (ProcessDefinition processDefinitionTmp : processDefinitionList) {
                     /**
@@ -506,7 +485,7 @@ public class ExecutorServiceImpl extends BaseServiceImpl implements ExecutorServ
                               String startNodeList, String schedule, WarningType warningType,
                               int executorId, int warningGroupId,
                               RunMode runMode, Priority processInstancePriority, String workerGroup, Long environmentCode,
-                              Map<String, String> startParams, Integer expectedParallelismNumber) {
+                              Map<String, String> startParams, Integer expectedParallelismNumber, int dryRun) {
 
         /**
          * instantiate command schedule instance
@@ -528,7 +507,7 @@ public class ExecutorServiceImpl extends BaseServiceImpl implements ExecutorServ
         }
 
         if (!StringUtils.isEmpty(startNodeList)) {
-            cmdParam.put(CMD_PARAM_START_NODE_NAMES, startNodeList);
+            cmdParam.put(CMD_PARAM_START_NODES, startNodeList);
         }
         if (warningType != null) {
             command.setWarningType(warningType);
@@ -542,6 +521,12 @@ public class ExecutorServiceImpl extends BaseServiceImpl implements ExecutorServ
         command.setProcessInstancePriority(processInstancePriority);
         command.setWorkerGroup(workerGroup);
         command.setEnvironmentCode(environmentCode);
+        command.setDryRun(dryRun);
+        ProcessDefinition processDefinition = processService.findProcessDefinitionByCode(processDefineCode);
+        if (processDefinition != null) {
+            command.setProcessDefinitionVersion(processDefinition.getVersion());
+        }
+        command.setProcessInstanceId(0);
 
         Date start = null;
         Date end = null;
@@ -550,66 +535,78 @@ public class ExecutorServiceImpl extends BaseServiceImpl implements ExecutorServ
             if (interval.length == 2) {
                 start = DateUtils.getScheduleDate(interval[0]);
                 end = DateUtils.getScheduleDate(interval[1]);
+                if (start.after(end)) {
+                    logger.info("complement data error, wrong date start:{} and end date:{} ",
+                            start, end
+                    );
+                    return 0;
+                }
             }
         }
         // determine whether to complement
         if (commandType == CommandType.COMPLEMENT_DATA) {
-            runMode = (runMode == null) ? RunMode.RUN_MODE_SERIAL : runMode;
-            if (null != start && null != end && !start.after(end)) {
-                if (runMode == RunMode.RUN_MODE_SERIAL) {
-                    cmdParam.put(CMDPARAM_COMPLEMENT_DATA_START_DATE, DateUtils.dateToString(start));
-                    cmdParam.put(CMDPARAM_COMPLEMENT_DATA_END_DATE, DateUtils.dateToString(end));
-                    command.setCommandParam(JSONUtils.toJsonString(cmdParam));
-                    return processService.createCommand(command);
-                } else if (runMode == RunMode.RUN_MODE_PARALLEL) {
-                    List<Schedule> schedules = processService.queryReleaseSchedulerListByProcessDefinitionCode(processDefineCode);
-                    LinkedList<Date> listDate = new LinkedList<>();
-                    if (!CollectionUtils.isEmpty(schedules)) {
-                        for (Schedule item : schedules) {
-                            listDate.addAll(CronUtils.getSelfFireDateList(start, end, item.getCrontab()));
-                        }
-                    }
-                    if (!CollectionUtils.isEmpty(listDate)) {
-                        int effectThreadsCount = expectedParallelismNumber == null ? listDate.size() : Math.min(listDate.size(), expectedParallelismNumber);
-                        logger.info("In parallel mode, current expectedParallelismNumber:{}", effectThreadsCount);
-
-                        int chunkSize = listDate.size() / effectThreadsCount;
-                        listDate.addFirst(start);
-                        listDate.addLast(end);
-
-                        for (int i = 0; i < effectThreadsCount; i++) {
-                            int rangeStart = i == 0 ? i : (i * chunkSize);
-                            int rangeEnd = i == effectThreadsCount - 1 ? listDate.size() - 1
-                                    : rangeStart + chunkSize + 1;
-                            cmdParam.put(CMDPARAM_COMPLEMENT_DATA_START_DATE, DateUtils.dateToString(listDate.get(rangeStart)));
-                            cmdParam.put(CMDPARAM_COMPLEMENT_DATA_END_DATE, DateUtils.dateToString(listDate.get(rangeEnd)));
-                            command.setCommandParam(JSONUtils.toJsonString(cmdParam));
-                            processService.createCommand(command);
-                        }
-
-                        return effectThreadsCount;
-                    } else {
-                        // loop by day
-                        int runCunt = 0;
-                        while (!start.after(end)) {
-                            runCunt += 1;
-                            cmdParam.put(CMDPARAM_COMPLEMENT_DATA_START_DATE, DateUtils.dateToString(start));
-                            cmdParam.put(CMDPARAM_COMPLEMENT_DATA_END_DATE, DateUtils.dateToString(start));
-                            command.setCommandParam(JSONUtils.toJsonString(cmdParam));
-                            processService.createCommand(command);
-                            start = DateUtils.getSomeDay(start, 1);
-                        }
-                        return runCunt;
-                    }
-                }
-            } else {
-                logger.error("there is not valid schedule date for the process definition code:{}", processDefineCode);
+            if (start == null || end == null) {
+                return 0;
             }
+            return createComplementCommandList(start, end, runMode, command, expectedParallelismNumber);
         } else {
             command.setCommandParam(JSONUtils.toJsonString(cmdParam));
             return processService.createCommand(command);
         }
+    }
 
-        return 0;
+    /**
+     * create complement command
+     * close left open right
+     *
+     * @param start
+     * @param end
+     * @param runMode
+     * @return
+     */
+    private int createComplementCommandList(Date start, Date end, RunMode runMode, Command command, Integer expectedParallelismNumber) {
+        int createCount = 0;
+        runMode = (runMode == null) ? RunMode.RUN_MODE_SERIAL : runMode;
+        Map<String, String> cmdParam = JSONUtils.toMap(command.getCommandParam());
+        switch (runMode) {
+            case RUN_MODE_SERIAL: {
+                cmdParam.put(CMDPARAM_COMPLEMENT_DATA_START_DATE, DateUtils.dateToString(start));
+                cmdParam.put(CMDPARAM_COMPLEMENT_DATA_END_DATE, DateUtils.dateToString(end));
+                command.setCommandParam(JSONUtils.toJsonString(cmdParam));
+                createCount = processService.createCommand(command);
+                break;
+            }
+            case RUN_MODE_PARALLEL: {
+                LinkedList<Date> listDate = new LinkedList<>();
+                List<Schedule> schedules = processService.queryReleaseSchedulerListByProcessDefinitionCode(command.getProcessDefinitionCode());
+                listDate.addAll(CronUtils.getSelfFireDateList(start, end, schedules));
+                createCount = listDate.size();
+                if (!CollectionUtils.isEmpty(listDate)) {
+                    if (expectedParallelismNumber != null && expectedParallelismNumber != 0) {
+                        createCount = Math.min(listDate.size(), expectedParallelismNumber);
+                    }
+                    logger.info("In parallel mode, current expectedParallelismNumber:{}", createCount);
+
+                    listDate.addLast(end);
+                    int chunkSize = listDate.size() / createCount;
+
+                    for (int i = 0; i < createCount; i++) {
+                        int rangeStart = i == 0 ? i : (i * chunkSize);
+                        int rangeEnd = i == createCount - 1 ? listDate.size() - 1
+                                : rangeStart + chunkSize;
+
+                        cmdParam.put(CMDPARAM_COMPLEMENT_DATA_START_DATE, DateUtils.dateToString(listDate.get(rangeStart)));
+                        cmdParam.put(CMDPARAM_COMPLEMENT_DATA_END_DATE, DateUtils.dateToString(listDate.get(rangeEnd)));
+                        command.setCommandParam(JSONUtils.toJsonString(cmdParam));
+                        processService.createCommand(command);
+                    }
+                }
+                break;
+            }
+            default:
+                break;
+        }
+        logger.info("create complement command count: {}", createCount);
+        return createCount;
     }
 }

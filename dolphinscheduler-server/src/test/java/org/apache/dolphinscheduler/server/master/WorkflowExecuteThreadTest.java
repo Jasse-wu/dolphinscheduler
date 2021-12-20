@@ -20,10 +20,8 @@ package org.apache.dolphinscheduler.server.master;
 import static org.apache.dolphinscheduler.common.Constants.CMDPARAM_COMPLEMENT_DATA_END_DATE;
 import static org.apache.dolphinscheduler.common.Constants.CMDPARAM_COMPLEMENT_DATA_START_DATE;
 import static org.apache.dolphinscheduler.common.Constants.CMD_PARAM_RECOVERY_START_NODE_STRING;
-import static org.apache.dolphinscheduler.common.Constants.CMD_PARAM_START_NODE_NAMES;
+import static org.apache.dolphinscheduler.common.Constants.CMD_PARAM_START_NODES;
 
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
 import static org.powermock.api.mockito.PowerMockito.mock;
 
 import org.apache.dolphinscheduler.common.enums.CommandType;
@@ -34,7 +32,6 @@ import org.apache.dolphinscheduler.common.utils.DateUtils;
 import org.apache.dolphinscheduler.common.utils.JSONUtils;
 import org.apache.dolphinscheduler.dao.entity.ProcessDefinition;
 import org.apache.dolphinscheduler.dao.entity.ProcessInstance;
-import org.apache.dolphinscheduler.dao.entity.Schedule;
 import org.apache.dolphinscheduler.dao.entity.TaskInstance;
 import org.apache.dolphinscheduler.server.master.config.MasterConfig;
 import org.apache.dolphinscheduler.server.master.runner.WorkflowExecuteThread;
@@ -47,7 +44,6 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -88,7 +84,6 @@ public class WorkflowExecuteThreadTest {
 
         applicationContext = mock(ApplicationContext.class);
         config = new MasterConfig();
-        config.setMasterExecTaskNum(1);
         Mockito.when(applicationContext.getBean(MasterConfig.class)).thenReturn(config);
 
         processInstance = mock(ProcessInstance.class);
@@ -106,80 +101,27 @@ public class WorkflowExecuteThreadTest {
         Mockito.when(processInstance.getProcessDefinition()).thenReturn(processDefinition);
 
         ConcurrentHashMap<Integer, TaskInstance> taskTimeoutCheckList = new ConcurrentHashMap<>();
-        workflowExecuteThread = PowerMockito.spy(new WorkflowExecuteThread(processInstance, processService, null, null, config, taskTimeoutCheckList));
+        ConcurrentHashMap<Integer, TaskInstance> taskRetryCheckList = new ConcurrentHashMap<>();
+        workflowExecuteThread = PowerMockito.spy(new WorkflowExecuteThread(processInstance, processService, null, null, config, taskTimeoutCheckList, taskRetryCheckList));
         // prepareProcess init dag
         Field dag = WorkflowExecuteThread.class.getDeclaredField("dag");
         dag.setAccessible(true);
         dag.set(workflowExecuteThread, new DAG());
-        PowerMockito.doNothing().when(workflowExecuteThread, "executeProcess");
-        PowerMockito.doNothing().when(workflowExecuteThread, "prepareProcess");
-        PowerMockito.doNothing().when(workflowExecuteThread, "runProcess");
         PowerMockito.doNothing().when(workflowExecuteThread, "endProcess");
     }
 
-    /**
-     * without schedule
-     */
-    @Test
-    public void testParallelWithOutSchedule() throws ParseException {
-        try {
-            Mockito.when(processService.queryReleaseSchedulerListByProcessDefinitionCode(processDefinitionId)).thenReturn(zeroSchedulerList());
-            Method method = WorkflowExecuteThread.class.getDeclaredMethod("executeComplementProcess");
-            method.setAccessible(true);
-            method.invoke(workflowExecuteThread);
-            // one create save, and 1-30 for next save, and last day 20 no save
-            verify(processService, times(20)).saveProcessInstance(processInstance);
-        } catch (Exception e) {
-            e.printStackTrace();
-            Assert.fail();
-        }
-    }
-
-    /**
-     * with schedule
-     */
-    @Test
-    public void testParallelWithSchedule() {
-        try {
-            Mockito.when(processService.queryReleaseSchedulerListByProcessDefinitionCode(processDefinitionId)).thenReturn(oneSchedulerList());
-            Method method = WorkflowExecuteThread.class.getDeclaredMethod("executeComplementProcess");
-            method.setAccessible(true);
-            method.invoke(workflowExecuteThread);
-            // one create save, and 9(1 to 20 step 2) for next save, and last day 31 no save
-            verify(processService, times(20)).saveProcessInstance(processInstance);
-        } catch (Exception e) {
-            Assert.fail();
-        }
-    }
 
     @Test
     public void testParseStartNodeName() throws ParseException {
         try {
             Map<String, String> cmdParam = new HashMap<>();
-            cmdParam.put(CMD_PARAM_START_NODE_NAMES, "t1,t2,t3");
+            cmdParam.put(CMD_PARAM_START_NODES, "1,2,3");
             Mockito.when(processInstance.getCommandParam()).thenReturn(JSONUtils.toJsonString(cmdParam));
             Class<WorkflowExecuteThread> masterExecThreadClass = WorkflowExecuteThread.class;
             Method method = masterExecThreadClass.getDeclaredMethod("parseStartNodeName", String.class);
             method.setAccessible(true);
             List<String> nodeNames = (List<String>) method.invoke(workflowExecuteThread, JSONUtils.toJsonString(cmdParam));
             Assert.assertEquals(3, nodeNames.size());
-        } catch (Exception e) {
-            Assert.fail();
-        }
-    }
-
-    @Test
-    public void testRetryTaskIntervalOverTime() {
-        try {
-            TaskInstance taskInstance = new TaskInstance();
-            taskInstance.setId(0);
-            taskInstance.setMaxRetryTimes(0);
-            taskInstance.setRetryInterval(0);
-            taskInstance.setState(ExecutionStatus.FAILURE);
-            Class<WorkflowExecuteThread> masterExecThreadClass = WorkflowExecuteThread.class;
-            Method method = masterExecThreadClass.getDeclaredMethod("retryTaskIntervalOverTime", TaskInstance.class);
-            method.setAccessible(true);
-            Assert.assertTrue((Boolean) method.invoke(workflowExecuteThread, taskInstance));
         } catch (Exception e) {
             Assert.fail();
         }
@@ -254,18 +196,6 @@ public class WorkflowExecuteThreadTest {
         } catch (Exception e) {
             Assert.fail();
         }
-    }
-
-    private List<Schedule> zeroSchedulerList() {
-        return Collections.emptyList();
-    }
-
-    private List<Schedule> oneSchedulerList() {
-        List<Schedule> schedulerList = new LinkedList<>();
-        Schedule schedule = new Schedule();
-        schedule.setCrontab("0 0 0 1/2 * ?");
-        schedulerList.add(schedule);
-        return schedulerList;
     }
 
 }

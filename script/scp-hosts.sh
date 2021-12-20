@@ -18,7 +18,9 @@
 
 workDir=`dirname $0`
 workDir=`cd ${workDir};pwd`
+set -a
 source $workDir/../conf/config/install_config.conf
+set +a
 
 txt=""
 if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -29,16 +31,22 @@ fi
 declare -A workersGroupMap=()
 
 workersGroup=(${workers//,/ })
+# shellcheck disable=SC2068
 for workerGroup in ${workersGroup[@]}
 do
-  echo $workerGroup;
   worker=`echo $workerGroup|awk -F':' '{print $1}'`
-  groupsName=`echo $workerGroup|awk -F':' '{print $2}'`
-  workersGroupMap+=([$worker]=$groupsName)
+  groupName=`echo $workerGroup|awk -F':' '{print $2}'`
+  if [ -z ${workersGroupMap[$worker]} ];then
+      workersGroupMap+=([$worker]=$groupName)
+  else
+      finalGroupName="${workersGroupMap[$worker]},$groupName"
+      workersGroupMap[$worker]=$finalGroupName
+  fi
 done
 
 
 hostsArr=(${ips//,/ })
+# shellcheck disable=SC2068
 for host in ${hostsArr[@]}
 do
 
@@ -57,7 +65,8 @@ do
     fi
 
     echo "start to scp $dsDir to $host/$installPath"
-    scp -P $sshPort -r $workDir/../$dsDir  $host:$installPath
+    # Use quiet mode to reduce command line output
+    scp -q -P $sshPort -r $workDir/../$dsDir  $host:$installPath
   done
 
   echo "scp dirs to $host/$installPath complete"

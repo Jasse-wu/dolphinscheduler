@@ -17,6 +17,7 @@
 
 package org.apache.dolphinscheduler.server.master.runner;
 
+import org.apache.dolphinscheduler.common.Constants;
 import org.apache.dolphinscheduler.common.enums.ExecutionStatus;
 import org.apache.dolphinscheduler.common.enums.StateEvent;
 import org.apache.dolphinscheduler.common.enums.StateEventType;
@@ -36,6 +37,7 @@ import org.apache.commons.lang.StringUtils;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -104,6 +106,8 @@ public class EventExecuteService extends Thread {
             try {
                 eventHandler();
 
+                TimeUnit.MILLISECONDS.sleep(Constants.SLEEP_TIME_MILLIS);
+
             } catch (Exception e) {
                 logger.error("Event service thread error", e);
             }
@@ -114,11 +118,12 @@ public class EventExecuteService extends Thread {
         for (WorkflowExecuteThread workflowExecuteThread : this.processInstanceExecMaps.values()) {
             if (workflowExecuteThread.eventSize() == 0
                     || StringUtils.isEmpty(workflowExecuteThread.getKey())
+                    || !workflowExecuteThread.isStart()
                     || eventHandlerMap.containsKey(workflowExecuteThread.getKey())) {
                 continue;
             }
             int processInstanceId = workflowExecuteThread.getProcessInstance().getId();
-            logger.info("handle process instance : {} events, count:{}",
+            logger.info("handle process instance : {} , events count:{}",
                     processInstanceId,
                     workflowExecuteThread.eventSize());
             logger.info("already exists handler process size:{}", this.eventHandlerMap.size());
@@ -182,12 +187,13 @@ public class EventExecuteService extends Thread {
                     StateEventChangeCommand stateEventChangeCommand = new StateEventChangeCommand(
                             processInstanceId, 0, workflowExecuteThread.getProcessInstance().getState(), processInstance.getId(), taskInstance.getId()
                     );
-
                     stateEventCallbackService.sendResult(address, port, stateEventChangeCommand.convert2Command());
                 }
 
                 @Override
                 public void onFailure(Throwable throwable) {
+                    logger.info("handle events {} failed.", processInstanceId);
+                    logger.info("handle events failed.", throwable);
                 }
             };
             Futures.addCallback(future, futureCallback, this.listeningExecutorService);
